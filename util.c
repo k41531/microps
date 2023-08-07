@@ -13,6 +13,10 @@
 
 #include "util.h"
 
+/*
+ * Logging
+ */
+
 int
 lprintf(FILE *fp, int level, const char *file, int line, const char *func, const char *fmt, ...)
 {
@@ -69,6 +73,10 @@ hexdump(FILE *fp, const void *data, size_t size)
     fprintf(fp, "+------+-------------------------------------------------+------------------+\n");
     funlockfile(fp);
 }
+
+/*
+ * Queue
+ */
 
 struct queue_entry {
     struct queue_entry *next;
@@ -150,6 +158,10 @@ queue_foreach(struct queue_head *queue, void (*func)(void *arg, void *data), voi
     }
 }
 
+/*
+ * Byteorder
+ */
+
 #ifndef __BIG_ENDIAN
 #define __BIG_ENDIAN 4321
 #endif
@@ -213,6 +225,10 @@ ntoh32(uint32_t n)
     }
     return endian == __LITTLE_ENDIAN ? byteswap32(n) : n;
 }
+
+/*
+ * Checksum
+ */
 
 uint16_t
 cksum16(uint16_t *addr, uint16_t count, uint32_t init)

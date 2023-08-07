@@ -1,35 +1,21 @@
-APPS = app/udpc.exe \
-       app/udps.exe \
-       app/tcpc.exe \
-       app/tcps.exe \
+APPS = 
 
-TESTS = test/test.exe \
-
-DRIVERS = driver/null.o \
-          driver/loopback.o \
+DRIVERS = 
 
 OBJS = util.o \
-       net.o \
-       ether.o \
-       arp.o \
-       ip.o \
-       icmp.o \
-       udp.o \
-       tcp.o \
-       sock.o \
+
+TESTS = test/step0.exe \
 
 CFLAGS := $(CFLAGS) -g -W -Wall -Wno-unused-parameter -iquote .
 
 ifeq ($(shell uname),Linux)
-       CFLAGS := $(CFLAGS) -pthread -iquote platform/linux
-       DRIVERS := $(DRIVERS) platform/linux/driver/ether_tap.o platform/linux/driver/ether_pcap.o
-       LDFLAGS := $(LDFLAGS) -lrt
-       OBJS := $(OBJS) platform/linux/sched.o platform/linux/intr.o
+  # Linux specific settings
+  BASE = platform/linux
+  CFLAGS := $(CFLAGS) -pthread -iquote $(BASE)
 endif
 
 ifeq ($(shell uname),Darwin)
-       CFLAGS := $(CFLAGS)
-       DRIVERS := $(DRIVERS)
+  # macOS specific settings
 endif
 
 .SUFFIXES:

@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <unistd.h>
 
+/*
+ * Compare
+ */
+
 #ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #endif
@@ -12,9 +16,17 @@
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #endif
 
+/*
+ * Array
+ */
+
 #define countof(x) ((sizeof(x) / sizeof(*x)))
 #define tailof(x) (x + countof(x))
 #define indexof(x, y) (((uintptr_t)y - (uintptr_t)x) / sizeof(*y))
+
+/*
+ * Time
+ */
 
 #define timeval_add_usec(x, y)         \
     do {                               \
@@ -36,6 +48,10 @@
         }                                 \
     } while(0);
 
+/*
+ * Logging
+ */
+
 #define errorf(...) lprintf(stderr, 'E', __FILE__, __LINE__, __func__, __VA_ARGS__)
 #define warnf(...) lprintf(stderr, 'W', __FILE__, __LINE__, __func__, __VA_ARGS__)
 #define infof(...) lprintf(stderr, 'I', __FILE__, __LINE__, __func__, __VA_ARGS__)
@@ -51,6 +67,10 @@ extern int
 lprintf(FILE *fp, int level, const char *file, int line, const char *func, const char *fmt, ...);
 extern void
 hexdump(FILE *fp, const void *data, size_t size);
+
+/*
+ * Queue
+ */
 
 struct queue_entry;
 
@@ -71,6 +91,10 @@ queue_peek(struct queue_head *queue);
 extern void
 queue_foreach(struct queue_head *queue, void (*func)(void *arg, void *data), void *arg);
 
+/*
+ * Byteorder
+ */
+
 extern uint16_t
 hton16(uint16_t h);
 extern uint16_t
@@ -79,6 +103,10 @@ extern uint32_t
 hton32(uint32_t h);
 extern uint32_t
 ntoh32(uint32_t n);
+
+/*
+ * Checksum
+ */
 
 extern uint16_t
 cksum16(uint16_t *addr, uint16_t count, uint32_t init);
