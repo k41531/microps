@@ -8,6 +8,7 @@
 #define NET_DEVICE_ADDR_LEN 6
 
 #define NET_DEVICE_FLAG_UP 0x0001
+#define NET_DEVICE_TYPE_DUMMY 0x0003
 
 #define NET_DEVICE_IS_UP(x) ((x)->flags & NET_DEVICE_FLAG_UP)
 #define NET_DEVICE_STATE(x) (NET_DEVICE_IS_UP(x) ? "up" : "down")
@@ -34,7 +35,14 @@ struct net_device {
 struct net_device_ops {
     int (*open)(struct net_device *dev);
     int (*close)(struct net_device *dev);
-    int (*transmit)(struct net_device *dev, uint16_t *type, const uint8_t *data, size_t len, const void *dst);
+    int (*transmit)(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst);
 };
 
+struct net_device *net_device_alloc(void);
+int net_device_register(struct net_device *dev);
+int net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst);
+int net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_device *dev);
+int net_run(void);
+void net_shutdown(void);
+int net_init(void);
 #endif

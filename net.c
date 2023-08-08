@@ -1,4 +1,8 @@
+#include <stdio.h>
+
+#include "platform.h"
 #include "net.h"
+#include "util.h"
 
 /* NOTE: if you want to add/delete the entries after net_run(), you need to protect these lists with a mutex. */
 static struct net_device *devices;
@@ -8,7 +12,7 @@ net_device_alloc(void)
 {
     struct net_device *dev;
 
-    dev = memory_malloc(sizeof(*dev));
+    dev = memory_alloc(sizeof(*dev));
     if (dev == NULL){
         errorf("memory_malloc() failure");
         return NULL;
@@ -108,7 +112,7 @@ net_run(void)
 }
 
 void
-net_showdown(void)
+net_shutdown(void)
 {
     struct net_device *dev;
 
@@ -122,6 +126,6 @@ net_showdown(void)
 int
 net_init(void)
 {
-    infof("initializing...");
+    infof("initializied");
     return 0;
 }
