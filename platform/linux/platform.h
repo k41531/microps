@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <signal.h>
 
 /*
  * Memory
@@ -48,3 +49,9 @@ mutex_unlock(mutex_t *mutex)
 }
 
 #endif
+
+/*
+ * Interrupt
+ */
+#define INTR_IRQ_BASE (SIGRTMIN+1)
+#define INTR_IRQ_SHARED 0x0001
