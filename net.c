@@ -3,6 +3,22 @@
 #include "platform.h"
 #include "net.h"
 #include "util.h"
+#include "ip.h"
+
+struct net_protocol {
+    struct net_protocol *next;
+    uint16_t type;
+    struct queue_head queue;
+    void (*handler)(const uint8_t *data, size_t len, struct net_device *dev);
+};
+
+struct net_protocol_queue_entry {
+    struct net_device *dev;
+    size_t len;
+    uint8_t data[];
+};
+
+static struct net_protocol *protocols;
 
 /* NOTE: if you want to add/delete the entries after net_run(), you need to protect these lists with a mutex. */
 static struct net_device *devices;
@@ -93,8 +109,31 @@ net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, si
 int
 net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_device *dev)
 {
-    debugf("dev=%s, type=0x%04x, len=%zu", dev->name, type, len);
-    debugdump(data, len);
+    struct net_protocol *proto;
+    struct net_protocol_queue_entry *entry;
+
+    for(proto = protocols; proto; proto = proto->next){
+        if(proto->type == type){
+            entry = memory_alloc(sizeof(*entry) + len);
+            if(entry == NULL){
+                errorf("memory_alloc() failure");
+                return -1;
+            }
+            entry->dev = dev;
+            entry->len = len;
+            memcpy(entry->data, data, len);
+            if(queue_push(&proto->queue, entry) == NULL){
+                errorf("queue_push() failure");
+                memory_free(entry);
+                return -1;
+            }
+            debugf("queue pushed (num:%u), dev=%s, type=0x%04x, len=%zu",
+                proto->queue.num, dev->name, type, len);
+            debugdump(data, len);
+            return 0;
+        }
+    }
+    /* unsupported protocol */
     return 0;
 }
 
@@ -136,6 +175,36 @@ net_init(void)
         errorf("intr_init() failure");
         return -1;
     }
+    if (ip_init() == -1){
+        errorf("ip_init() failure");
+        return -1;
+    }
     infof("initializied");
+    return 0;
+}
+
+/* NOTE: must not be call after net_run() */
+int
+net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, size_t len, struct net_device *dev))
+{
+    struct net_protocol *proto;
+    
+    for (proto = protocols; proto; proto = proto->next) {
+        if (proto->type == type) {
+            errorf("type=0x%04x is already registered", type);
+            return -1;
+        }
+    }
+
+    proto = memory_alloc(sizeof(*proto));
+    if (proto == NULL) {
+        errorf("memory_alloc() failure");
+        return -1;
+    }
+    proto->type = type;
+    proto->handler = handler;
+    proto->next = protocols;
+    protocols = proto;
+    infof("register net protocol: type=0x%04x", type);
     return 0;
 }
