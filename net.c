@@ -231,3 +231,34 @@ net_softirq_handler(void)
     }
     return 0;
 }
+
+int
+net_device_add_iface(struct net_device *dev, struct net_iface *iface)
+{
+    struct net_iface *entry;
+    
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        if (entry->family == iface->family) {
+            /* NOTE: For simplicity, only one iface can be aded per family. */
+            errorf("family=%d is already registered", iface->family);
+            return -1;
+        }
+    }
+    iface->dev = dev;
+    // Insert iface in to the head of the device's intafaceslist.
+    dev->ifaces = iface;
+    return 0;
+}
+
+struct net_iface *
+net_device_get_iface(struct net_device *dev, int family)
+{
+    struct net_iface *entry;
+    
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        if (entry->family == family) {
+            break;
+        }
+    }
+    return entry;
+}
