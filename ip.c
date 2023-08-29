@@ -25,10 +25,17 @@ struct ip_hdr
     uint8_t options[];
 };
 
+struct ip_protocol {
+    struct ip_protocol *next;
+    uint8_t type;
+    void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface);
+};
+
 const ip_addr_t IP_ADDR_ANY = 0x00000000;
 const ip_addr_t IP_ADDR_BROADCAST = 0xffffffff;
 
 static struct ip_iface *ifaces;
+static struct ip_protocol *protocols;
 
 static void
 ip_dump(const uint8_t *data, size_t len)
@@ -59,6 +66,36 @@ ip_dump(const uint8_t *data, size_t len)
     hexdump(stderr, data, len);
 #endif
     funlockfile(stderr);
+}
+
+int
+ip_protocol_register(uint8_t type, void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface))
+{
+   struct ip_protocol *entry;
+   // 重複の確認
+   // プロトコルリストを巡回し、すでに登録されていないか確認する
+    for (entry = protocols; entry; entry = entry->next) {
+         if (entry->type == type) {
+              errorf("type=%u is already registered", type);
+              return -1;
+         }
+    }
+    // メモリ確保
+    entry = memory_alloc(sizeof(*entry));
+    if (entry == NULL) {
+         errorf("memory_alloc() failure");
+         return -1;
+    }
+    // プロトコルエントリに値を設定
+    entry->type = type;
+    entry->handler = handler;
+    // プロトコルリストに追加
+    entry->next = protocols;
+    protocols = entry;
+    
+
+   infof("register ip protocol: type=%u", type);
+   return 0;
 }
 
 static void
@@ -120,6 +157,14 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
     debugf("dev=%s, iface=%s, protocol=%u, total=%u",
         dev->name, ip_addr_ntop(iface->unicast, addr, sizeof(addr)), hdr->protocol, total);
     ip_dump(data, total);
+    // プロトコルの検索
+    for (struct ip_protocol *proto = protocols; proto; proto = proto->next) {
+        if (proto->type == hdr->protocol) {
+            proto->handler((uint8_t *)hdr + hlen, total - hlen, hdr->src, hdr->dst, iface);
+            return;
+        }
+    }
+    errorf("protocol=0x%02x is not supported", hdr->protocol);
 }
 
 static uint16_t

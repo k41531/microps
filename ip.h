@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#include "net.h"
+
 
 #define IP_VERSION_IPV4 4
 
@@ -17,17 +19,14 @@
 #define IP_ADDR_LEN 4
 #define IP_ADDR_STR_LEN (IP_ADDR_LEN * 4)
 
+#define IP_PROTOCOL_ICMP 1
+#define IP_PROTOCOL_TCP 6
+#define IP_PROTOCOL_UDP 17
+
 typedef uint32_t ip_addr_t;
 
 extern const ip_addr_t IP_ADDR_ANY;
 extern const ip_addr_t IP_ADDR_BROADCAST;
-
-extern int
-ip_addr_pton(const char *p, ip_addr_t *n);
-extern char *
-ip_addr_ntop(const ip_addr_t n, char *p, size_t size);
-
-extern int ip_init(void);
 
 struct ip_iface {
     struct net_iface iface;
@@ -36,6 +35,17 @@ struct ip_iface {
     ip_addr_t netmask;
     ip_addr_t broadcast;
 };
+
+extern int
+ip_addr_pton(const char *p, ip_addr_t *n);
+extern char *
+ip_addr_ntop(const ip_addr_t n, char *p, size_t size);
+
+extern int
+ip_protocol_register(uint8_t type, void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface));
+
+extern int ip_init(void);
+
 
 extern struct ip_iface *
 ip_iface_alloc(const char *unicast, const char *netmask);
