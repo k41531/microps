@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/time.h>
 
 #define IFNAMSIZ 16
 #define NET_DEVICE_ADDR_LEN 6
@@ -70,5 +71,10 @@ int net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, si
 
 struct net_iface *net_device_get_iface(struct net_device *dev, int family);
 int net_device_add_iface(struct net_device *dev, struct net_iface *iface);
+
+extern int
+net_timer_register(struct timeval interval, void (*handler)(void));
+extern int
+net_timer_handler(void);
 
 #endif
