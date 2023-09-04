@@ -21,7 +21,7 @@
 #define ARP_CACHE_TIMEOUT 30
 
 #define ARP_CACHE_STATE_FREE        0
-#define ARP_CACHE_STATE_INCOMPLETE  0
+#define ARP_CACHE_STATE_INCOMPLETE  1
 #define ARP_CACHE_STATE_RESOLVED    2
 #define ARP_CACHE_STATE_STATIC      3
 
@@ -148,13 +148,12 @@ arp_cache_update(ip_addr_t pa, const uint8_t *ha)
     // Update information registered in cache
     cache = arp_cache_select(pa);
     if (cache == NULL){
-        errorf("arp_cache_select() failure");
         return NULL;
     }
     cache->state = ARP_CACHE_STATE_RESOLVED;
     memcpy(cache->ha, ha, ETHER_ADDR_LEN);
     gettimeofday(&cache->timestamp, NULL);
-    debugf("UPDATE: pa=%s, ha=%s", ip_addr_ntop(cache->pa, addr1, sizeof(addr1)), ether_addr_ntop(cache->ha, addr2, sizeof(addr2)));
+    debugf("UPDATE: pa=%s, ha=%s", ip_addr_ntop(pa, addr1, sizeof(addr1)), ether_addr_ntop(ha, addr2, sizeof(addr2)));
     return cache;
 }
 
@@ -174,7 +173,7 @@ arp_cache_insert(ip_addr_t pa, const uint8_t *ha)
     cache->pa = pa;
     memcpy(cache->ha, ha, ETHER_ADDR_LEN);
     gettimeofday(&cache->timestamp, NULL);
-    debugf("INSERT: pa=%s, ha=%s", ip_addr_ntop(cache->pa, addr1, sizeof(addr1)), ether_addr_ntop(cache->ha, addr2, sizeof(addr2)));
+    debugf("INSERT: pa=%s, ha=%s", ip_addr_ntop(pa, addr1, sizeof(addr1)), ether_addr_ntop(ha, addr2, sizeof(addr2)));
     return cache;
 }
 
@@ -328,7 +327,7 @@ arp_init(void)
 {
     struct timeval interval = {1, 0};
 
-    if (net_protocol_register(ETHER_TYPE_ARP, arp_input) == -1){
+    if (net_protocol_register(NET_PROTOCOL_TYPE_ARP, arp_input) == -1){
         errorf("net_protocol_register() failure");
         return -1;
     }
