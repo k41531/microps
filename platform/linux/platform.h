@@ -7,6 +7,14 @@
 #include <signal.h>
 
 /*
+ * Interrupt
+ */
+#define INTR_IRQ_BASE (SIGRTMIN+1)
+#define INTR_IRQ_SHARED 0x0001
+#define INTR_IRQ_SOFTIRQ SIGUSR1
+#define INTR_IRQ_EVENT SIGUSR2
+
+/*
  * Memory
  */
 
@@ -48,11 +56,27 @@ mutex_unlock(mutex_t *mutex)
     return pthread_mutex_unlock(mutex);
 }
 
-#endif
-
 /*
- * Interrupt
+ * Scheduler
  */
-#define INTR_IRQ_BASE (SIGRTMIN+1)
-#define INTR_IRQ_SHARED 0x0001
-#define INTR_IRQ_SOFTIRQ SIGUSR1
+
+struct sched_ctx {
+    pthread_cond_t cond;
+    int interrupted;
+    int wc;
+};
+
+#define SCHED_CTX_INITIALIZER {PTHREAD_COND_INITIALIZER, 0, 0}
+
+extern int
+sched_ctx_init(struct sched_ctx *ctx);
+extern int
+sched_ctx_destroy(struct sched_ctx *ctx);
+extern int
+sched_sleep(struct sched_ctx *ctx, mutex_t *mutex, const struct timespec *abstime);
+extern int
+sched_wakeup(struct sched_ctx *ctx);
+extern int
+sched_interrupt(struct sched_ctx *ctx);
+
+#endif
