@@ -70,6 +70,7 @@ net_device_register(struct net_device *dev)
     return 0;
 }
 
+
 static int
 net_device_open(struct net_device *dev)
 {
@@ -106,6 +107,38 @@ net_device_close(struct net_device *dev)
     return 0;
 }
 
+
+int
+net_device_add_iface(struct net_device *dev, struct net_iface *iface)
+{
+    struct net_iface *entry;
+    
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        if (entry->family == iface->family) {
+            /* NOTE: For simplicity, only one iface can be aded per family. */
+            errorf("family=%d is already registered", iface->family);
+            return -1;
+        }
+    }
+    iface->next = dev->ifaces;
+    iface->dev = dev;
+    // Insert iface in to the head of the device's intafaceslist.
+    dev->ifaces = iface;
+    return 0;
+}
+
+struct net_iface *
+net_device_get_iface(struct net_device *dev, int family)
+{
+    struct net_iface *entry;
+    
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        if (entry->family == family) {
+            break;
+        }
+    }
+    return entry;
+}
 int
 net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst)
 {
@@ -125,6 +158,33 @@ net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, si
     }
     return 0;
 }
+
+/* NOTE: must not be call after net_run() */
+int
+net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, size_t len, struct net_device *dev))
+{
+    struct net_protocol *proto;
+    
+    for (proto = protocols; proto; proto = proto->next) {
+        if (proto->type == type) {
+            errorf("type=0x%04x is already registered", type);
+            return -1;
+        }
+    }
+
+    proto = memory_alloc(sizeof(*proto));
+    if (proto == NULL) {
+        errorf("memory_alloc() failure");
+        return -1;
+    }
+    proto->type = type;
+    proto->handler = handler;
+    proto->next = protocols;
+    protocols = proto;
+    infof("register net protocol: type=0x%04x", type);
+    return 0;
+}
+
 
 /* NOTE: must not be call after net_run() */
 int
@@ -194,6 +254,29 @@ net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_dev
     /* unsupported protocol */
     return 0;
 }
+
+int
+net_softirq_handler(void)
+{
+    struct net_protocol *proto;
+    struct net_protocol_queue_entry *entry;
+
+    for (proto = protocols; proto; proto = proto->next) {
+        while (1) {
+            entry = queue_pop(&proto->queue);
+            if (entry == NULL) {
+                break;
+            }
+            debugf("queue: popped (num:%u), dev=%s, type=0x%04x, len=%zu",
+                proto->queue.num, entry->dev->name, proto->type, entry->len);
+            debugdump(entry->data, entry->len);
+            proto->handler(entry->data, entry->len, entry->dev);
+            memory_free(entry);
+        }
+    }
+    return 0;
+}
+
 
 int
 net_event_subscribe(void (*handler)(void *arg), void *arg)
@@ -289,83 +372,4 @@ net_init(void)
     }
     infof("initializied");
     return 0;
-}
-
-/* NOTE: must not be call after net_run() */
-int
-net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, size_t len, struct net_device *dev))
-{
-    struct net_protocol *proto;
-    
-    for (proto = protocols; proto; proto = proto->next) {
-        if (proto->type == type) {
-            errorf("type=0x%04x is already registered", type);
-            return -1;
-        }
-    }
-
-    proto = memory_alloc(sizeof(*proto));
-    if (proto == NULL) {
-        errorf("memory_alloc() failure");
-        return -1;
-    }
-    proto->type = type;
-    proto->handler = handler;
-    proto->next = protocols;
-    protocols = proto;
-    infof("register net protocol: type=0x%04x", type);
-    return 0;
-}
-
-int
-net_softirq_handler(void)
-{
-    struct net_protocol *proto;
-    struct net_protocol_queue_entry *entry;
-
-    for (proto = protocols; proto; proto = proto->next) {
-        while (1) {
-            entry = queue_pop(&proto->queue);
-            if (entry == NULL) {
-                break;
-            }
-            debugf("queue: popped (num:%u), dev=%s, type=0x%04x, len=%zu",
-                proto->queue.num, entry->dev->name, proto->type, entry->len);
-            debugdump(entry->data, entry->len);
-            proto->handler(entry->data, entry->len, entry->dev);
-            memory_free(entry);
-        }
-    }
-    return 0;
-}
-
-int
-net_device_add_iface(struct net_device *dev, struct net_iface *iface)
-{
-    struct net_iface *entry;
-    
-    for (entry = dev->ifaces; entry; entry = entry->next) {
-        if (entry->family == iface->family) {
-            /* NOTE: For simplicity, only one iface can be aded per family. */
-            errorf("family=%d is already registered", iface->family);
-            return -1;
-        }
-    }
-    iface->dev = dev;
-    // Insert iface in to the head of the device's intafaceslist.
-    dev->ifaces = iface;
-    return 0;
-}
-
-struct net_iface *
-net_device_get_iface(struct net_device *dev, int family)
-{
-    struct net_iface *entry;
-    
-    for (entry = dev->ifaces; entry; entry = entry->next) {
-        if (entry->family == family) {
-            break;
-        }
-    }
-    return entry;
 }

@@ -31,7 +31,7 @@ struct ether_tap{
     unsigned int irq;
 };
 
-#define PRIV(x) ((struct ether_tap *)(x->priv))
+#define PRIV(x) ((struct ether_tap *)x->priv)
 
 static int
 ether_tap_addr(struct net_device *dev)
@@ -104,9 +104,9 @@ ether_tap_close(struct net_device *dev)
     return close(PRIV(dev)->fd);
 }
 static ssize_t
-ether_tap_write(struct net_device *dev, const uint8_t *frame, size_t filen)
+ether_tap_write(struct net_device *dev, const uint8_t *frame, size_t flen)
 {
-    return write(PRIV(dev)->fd, frame, filen);
+    return write(PRIV(dev)->fd, frame, flen);
 }
 int
 ether_tap_transmit(struct net_device *dev, uint16_t type, const uint8_t *buf, size_t len, const void *dst)
@@ -121,7 +121,7 @@ ether_tap_read(struct net_device *dev, uint8_t *buf, size_t size)
 
     len = read(PRIV(dev)->fd, buf, size);
     if (len <= 0) {
-        if(len == -1 && errno != EAGAIN){
+        if(len == -1 && errno != EINTR){
             errorf("read: %s, dev=%s", strerror(errno), dev->name);
         }
         return -1;
