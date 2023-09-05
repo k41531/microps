@@ -281,8 +281,9 @@ tcp_output(struct tcp_pcb *pcb, uint8_t flg, uint8_t *data, size_t len)
 }
 
 static void
-tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, size_t len, struct ip_endpoint *local, struct ip_endpoint *foreign)
+tcp_segment_arrives(struct tcp_segment_info *seg, uint8_t flags, uint8_t *data, size_t len, struct ip_endpoint *local, struct ip_endpoint *foreign)
 {
+    int acceptable = 0;
     struct tcp_pcb *pcb;
 
     pcb = tcp_pcb_select(local, foreign);
@@ -291,9 +292,9 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
             return;
         }
         if (!TCP_FLG_ISSET(flags, TCP_FLG_ACK)) {
-            tcp_output_segment(0, seq->seq + seq->len, TCP_FLG_RST | TCP_FLG_ACK, 0, NULL, 0, local, foreign);
+            tcp_output_segment(0, seg->seq + seg->len, TCP_FLG_RST | TCP_FLG_ACK, 0, NULL, 0, local, foreign);
         } else {
-            tcp_output_segment(seq->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
+            tcp_output_segment(seg->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
         }
         return;
     }
@@ -310,7 +311,7 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
         * 2nd check for an ACK 
         */ 
         if (TCP_FLG_ISSET(flags, TCP_FLG_ACK)) {
-            tcp_output_segment(seq->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
+            tcp_output_segment(seg->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
             return;
         }
         
@@ -323,8 +324,8 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
             pcb->local = *local;
             pcb->foreign = *foreign;
             pcb->rcv.wnd = sizeof(pcb->buf);
-            pcb->rcv.nxt = seq->seq + 1;
-            pcb->irs = seq->seq;
+            pcb->rcv.nxt = seg->seq + 1;
+            pcb->irs = seg->seq;
             pcb->iss = random();
             tcp_output(pcb, TCP_FLG_SYN | TCP_FLG_ACK, NULL, 0);
             pcb->snd.nxt = pcb->iss + 1;
@@ -375,6 +376,48 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
     /*
     * 1st check sequence number 
     */
+    switch (pcb->state)
+    {
+    case TCP_PCB_STATE_SYN_RECEIVED:
+    case TCP_PCB_STATE_ESTABLISHED:
+        if(!seg->len) {
+            if(seg->seq == pcb->rcv.nxt) {
+                acceptable = 1;
+            } else {
+                if (pcb->rcv.nxt <= seg->seq && seg->seq < pcb->rcv.nxt + pcb->rcv.wnd) {
+                    acceptable = 1;
+                }
+            }
+        } else {
+            if (!pcb->rcv.wnd) {
+                /* not acceptable */
+            } else {
+                if (pcb->rcv.nxt <= seg->seq && seg->seq < pcb->rcv.nxt + pcb->rcv.wnd ||
+                pcb->rcv.nxt <= seg->seq + seg->len - 1 && seg->seq + seg->len - 1 < pcb->rcv.nxt + pcb->rcv.wnd) {
+                    acceptable = 1;
+                }
+            }
+        }
+        if(!acceptable) {
+            if (!TCP_FLG_ISSET(flags, TCP_FLG_RST)) {
+                tcp_output(pcb, TCP_FLG_ACK, NULL, 0);
+            }
+            return;
+        }
+        /*
+         * In the following it is assumed that the segment is the idealized
+         * segment that begins at RCV.NXT and does not exceed the window.
+         * One could tailor actual segments to fit this assumption by
+         * trimming off any portions that lie outside the window (including
+         * SYN and FIN), and only processing further if the segment then
+         * begins at RCV.NXT.  Segments with higher begining sequence
+         * numbers may be held for later processing.
+         */
+        break;
+    
+    default:
+        break;
+    }
 
     /*
      * 2nd check the RST bit 
@@ -397,11 +440,28 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
     }
     switch (pcb->state) {
     case TCP_PCB_STATE_SYN_RECEIVED:
-        if (pcb->snd.una <= seq->ack && seq->ack <= pcb->snd.nxt) {
+        if (pcb->snd.una <= seg->ack && seg->ack <= pcb->snd.nxt) {
             pcb->state = TCP_PCB_STATE_ESTABLISHED;
             sched_wakeup(&pcb->ctx);
         } else {
-            tcp_output_segment(seq->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
+            tcp_output_segment(seg->ack, 0, TCP_FLG_RST, 0, NULL, 0, local, foreign);
+            return;
+        }
+    case TCP_PCB_STATE_ESTABLISHED:
+        if (pcb->snd.una < seg->ack && seg->ack <= pcb->snd.nxt) {
+            pcb->snd.una = seg->ack;
+            /* TTODO: ANy segments on the retransmission wueue which are thereby entirely acknowledged are removed */
+            /* ignore: Users should receive positive acknowledgements for buffers
+                        which have veen SENT and fully acknowledged (i.e., SEND buffer should be returned with "ok" response) */
+            if (pcb->snd.wl1 < seg->seq || (pcb->snd.wl1 == seg->seq && pcb->snd.wl2 <= seg->ack)) {
+                pcb->snd.wnd = seg->wnd;
+                pcb->snd.wl1 = seg->seq;
+                pcb->snd.wl2 = seg->ack;
+            }
+        } else if (seg->ack < pcb->snd.una) {
+            /* ignore */
+        } else if (seg->ack > pcb->snd.nxt) {
+            tcp_output(pcb, TCP_FLG_ACK, NULL, 0);
             return;
         }
         break; 
@@ -414,6 +474,21 @@ tcp_segment_arrives(struct tcp_segment_info *seq, uint8_t flags, uint8_t *data, 
     /*
      * 7th process the segment text 
      */
+    switch (pcb->state)
+    {
+    case TCP_PCB_STATE_ESTABLISHED:
+        if(len) {
+            memcpy(pcb->buf + (sizeof(pcb->buf) - pcb->rcv.wnd), data, len);
+            pcb->rcv.nxt = seg->seq + seg->len;
+            pcb->rcv.wnd -= seg->len;
+            tcp_output(pcb, TCP_FLG_ACK, NULL, 0);
+            sched_wakeup(&pcb->ctx);
+        }
+        break;
+    
+    default:
+        break;
+    }
     
     /*
      * 8th check the FIN bit 
@@ -586,6 +661,103 @@ tcp_close(int id)
     tcp_pcb_release(pcb);
     mutex_unlock(&mutex);
     return 0;
+}
 
+ssize_t
+tcp_send(int id, uint8_t *data, size_t len)
+{
+    struct tcp_pcb *pcb;
+    ssize_t sent = 0;
+    struct ip_iface *iface;
+    size_t mss, cap, slen;
 
+    mutex_lock(&mutex);
+    pcb = tcp_pcb_get(id);
+    if (!pcb) {
+        errorf("pcb not found");
+        mutex_unlock(&mutex);
+        return -1;
+    }
+RETRY:
+    switch (pcb->state)
+    {
+    case TCP_PCB_STATE_ESTABLISHED:
+        iface = ip_route_get_iface(pcb->foreign.addr);
+        if (!iface) {
+            errorf("ip_route_get_iface() failure");
+            mutex_unlock(&mutex);
+            return -1;
+        }
+        mss = NET_IFACE(iface)->dev->mtu - (IP_HDR_SIZE_MIN + sizeof(struct tcp_hdr));
+        while (sent < (ssize_t)len) {
+            cap = pcb->snd.wnd - (pcb->snd.nxt - pcb->snd.una);
+            if(!cap) {
+                if (sched_sleep(&pcb->ctx, &mutex, NULL) == -1) {
+                    debugf("interrupted");
+                    if (!sent) {
+                        mutex_unlock(&mutex);
+                        errno = EINTR;
+                        return -1;
+                    }
+                    break;
+                }
+                goto RETRY;
+            }
+            slen = MIN(MIN(mss, len - sent), cap);
+            if (tcp_output(pcb, TCP_FLG_ACK | TCP_FLG_PSH, data + sent, slen) == -1) {
+                errorf("tcp_output() failure");
+                pcb->state = TCP_PCB_STATE_CLOSED;
+                tcp_pcb_release(pcb);
+                mutex_unlock(&mutex);
+                return -1;
+            }
+            pcb->snd.nxt += slen;
+            sent += slen;
+        }
+        break;
+    default:
+        errorf("invalid state: %d", pcb->state);
+        mutex_unlock(&mutex);
+        return -1;
+    }
+}
+
+ssize_t
+tcp_receive(int id, uint8_t *buf, size_t size)
+{
+    struct tcp_pcb *pcb;
+    size_t remain, len;
+
+    mutex_lock(&mutex);
+    pcb = tcp_pcb_get(id);
+    if (!pcb) {
+        errorf("pcb not found");
+        mutex_unlock(&mutex);
+        return -1;
+    }
+RETRY:
+    switch(pcb->state) {
+    case TCP_PCB_STATE_ESTABLISHED:
+        remain = sizeof(pcb->buf) - pcb->rcv.wnd;
+        if(!remain) {
+            if (sched_sleep(&pcb->ctx, &mutex, NULL) == -1) {
+                debugf("interrupted");
+                mutex_unlock(&mutex);
+                errno = EINTR;
+                return -1;
+            }
+            goto RETRY;
+        }
+        break;
+    default:
+        errorf("invalid state: %d", pcb->state);
+        mutex_unlock(&mutex);
+        return -1;
+    }
+    len = MIN(size, remain);
+    memcpy(buf, pcb->buf, len);
+    memmove(pcb->buf, pcb->buf + len, remain - len);
+    pcb->rcv.wnd += len;
+    mutex_unlock(&mutex);
+    return len;
 }
